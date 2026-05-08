@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+# claude-acct — switch between Claude Code subscription accounts on macOS.
+#
+# Stores OAuth credentials from the macOS Keychain to per-profile files
+# under ~/.claude, and swaps them in/out of the Keychain on demand.
+# The rest of ~/.claude (settings, skills, hooks, MCP, agents) is shared
+# across all profiles — only the credential changes.
+#
+# Subcommands: add, switch, list, current, remove, help
+
+set -euo pipefail
+IFS=$'\n\t'
+
+KEYCHAIN_SERVICE="Claude Code-credentials"
+STORE_DIR="${CLAUDE_ACCT_STORE:-$HOME/.claude}"
+ACTIVE_FILE="$STORE_DIR/active-profile"
+
+err() {
+  printf 'error: %s\n' "$*" >&2
+  exit 1
+}
+
+require_profile_name() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || err "missing profile name"
+  [[ "$name" =~ ^[A-Za-z0-9_.-]+$ ]] || err "profile name must match [A-Za-z0-9_.-]+"
+}
+
+profile_path() {
+  printf '%s/keychain.%s.txt' "$STORE_DIR" "$1"
+}
+
+read_keychain() {
+  security find-generic-password -s "$KEYCHAIN_SERVICE" -w 2>/dev/null || return 1
+}
+
+write_keychain() {
+  local credential="$1"
+  security delete-generic-password -s "$KEYCHAIN_SERVICE" >/dev/null 2>&1 || true
+  security add-generic-password -s "$KEYCHAIN_SERVICE" -a "$USER" -w "$credential"
+}
+
+write_profile_file() {
+  local file="$1" credential="$2"
+  mkdir -p "$STORE_DIR"
+  printf '%s' "$credential" >"$file"
+  chmod 600 "$file"
+}
+
+set_active() {
+  printf '%s\n' "$1" >"$ACTIVE_FILE"
+  chmod 600 "$ACTIVE_FILE"
+}
+
+get_active() {
+  [[ -f "$ACTIVE_FILE" ]] || return 1
+  tr -d '\n' <"$ACTIVE_FILE"
+}
+
+cmd_add() {
+  local name="${1:-}"
+  require_profile_name "$name"
+
+  local credential
+  credential=$(read_keychain) || err "no credential in keychain — run \`claude\` and log in first"
+
+  write_profile_file "$(profile_path "$name")" "$credential"
+  set_active "$name"
+  printf "saved profile '%s' (now active)\n" "$name"
+}
+
+cmd_switch() {
+  local target="${1:-}"
+  require_profile_name "$target"
+
+  local target_file
+  target_file=$(profile_path "$target")
+  [[ -f "$target_file" ]] || err "profile '$target' not found at $target_file"
+
+  # Auto-save the current credential under the active profile name (if any),
+  # so the saved copy stays fresh across token refreshes.
+  local active
+  if active=$(get_active); then
+    if [[ "$active" != "$target" ]]; then
+      local current
+      if current=$(read_keychain); then
+        write_profile_file "$(profile_path "$active")" "$current"
+      fi
+    fi
+  fi
+
+  local credential
+  credential=$(<"$target_file")
+  write_keychain "$credential"
+  set_active "$target"
+  printf "switched to profile '%s'\n" "$target"
+}
+
+cmd_list() {
+  shopt -s nullglob
+  local files=("$STORE_DIR"/keychain.*.txt)
+  shopt -u nullglob
+
+  if ((${#files[@]} == 0)); then
+    printf 'no profiles saved. run: claude-acct add <name>\n'
+    return 0
+  fi
+
+  local active=""
+  active=$(get_active 2>/dev/null) || true
+
+  local file name marker
+  for file in "${files[@]}"; do
+    name=${file##*/keychain.}
+    name=${name%.txt}
+    marker="  "
+    [[ "$name" == "$active" ]] && marker="* "
+    printf '%s%s\n' "$marker" "$name"
+  done
+}
+
+cmd_current() {
+  local active
+  if active=$(get_active); then
+    printf '%s\n' "$active"
+  else
+    printf '(no active profile)\n'
+    return 1
+  fi
+}
+
+cmd_remove() {
+  local name="${1:-}"
+  require_profile_name "$name"
+
+  local file
+  file=$(profile_path "$name")
+  [[ -f "$file" ]] || err "profile '$name' not found"
+
+  rm -f "$file"
+
+  local active
+  if active=$(get_active 2>/dev/null) && [[ "$active" == "$name" ]]; then
+    rm -f "$ACTIVE_FILE"
+    printf "removed profile '%s' (was active — keychain unchanged, no profile is active now)\n" "$name"
+  else
+    printf "removed profile '%s'\n" "$name"
+  fi
+}
+
+cmd_help() {
+  cat <<'USAGE'
+claude-acct — switch between Claude Code subscription accounts (macOS)
+
+Usage:
+  claude-acct add <name>       Save the current keychain credential as <name>
+  claude-acct switch <name>    Swap the active credential to <name>
+                                 (auto-saves the previous active profile first)
+  claude-acct list             List saved profiles; '*' marks the active one
+  claude-acct current          Print the active profile name
+  claude-acct remove <name>    Delete a saved profile
+  claude-acct help             Show this message
+
+Environment:
+  CLAUDE_ACCT_STORE   Directory for profile files (default: ~/.claude)
+
+Files:
+  ~/.claude/keychain.<name>.txt   Stored OAuth credential per profile (chmod 600)
+  ~/.claude/active-profile        Name of the currently active profile
+
+Notes:
+  - macOS only (uses the `security` command for Keychain access).
+  - Stored credential files contain plaintext OAuth tokens — keep FileVault on.
+  - All profiles share ~/.claude (skills, hooks, MCP, settings, history).
+USAGE
+}
+
+main() {
+  local sub="${1:-help}"
+  shift || true
+  case "$sub" in
+    add) cmd_add "$@" ;;
+    switch | use) cmd_switch "$@" ;;
+    list | ls) cmd_list "$@" ;;
+    current | active | whoami) cmd_current "$@" ;;
+    remove | rm | delete) cmd_remove "$@" ;;
+    help | --help | -h) cmd_help ;;
+    *) err "unknown subcommand: $sub (try: claude-acct help)" ;;
+  esac
+}
+
+main "$@"

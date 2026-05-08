@@ -1,0 +1,31 @@
+# Credential files — NEVER commit
+# These contain plaintext OAuth tokens for Claude subscriptions.
+keychain.*.txt
+keychain.*
+active-profile
+*.credentials
+*.token
+*.secret
+
+# Environment
+.env
+.env.*
+
+# Local install / build artifacts
+.local/
+dist/
+build/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tooling
+.shellcheckrc.local
