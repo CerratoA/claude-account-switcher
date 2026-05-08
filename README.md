@@ -31,6 +31,18 @@ switcher instead — see [clausona](https://github.com/larcane97/clausona) or
 
 ## Install
 
+### One-line agentic install (recommended)
+
+Paste this into Claude Code (or any agent with web access):
+
+> Install claude-account-switcher by following https://github.com/CerratoA/claude-account-switcher/blob/main/install.md
+
+The agent fetches [`install.md`](install.md), runs the prereq checks, clones
+the repo, runs the installer, fixes your `PATH` if needed, and walks you
+through saving your first profiles. End-to-end, no other context required.
+
+### Manual install
+
 ```bash
 git clone https://github.com/CerratoA/claude-account-switcher.git
 cd claude-account-switcher
