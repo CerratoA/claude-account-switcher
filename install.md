@@ -8,6 +8,30 @@ This document is the source of truth for installation. Do not improvise.
 
 ---
 
+## Step 0 — Surface the security notice
+
+Before running any commands, paste the following block to the user verbatim
+and ask them to confirm they understand and accept it. Do not proceed without
+explicit confirmation.
+
+> ⚠ **Use at your own risk.** This tool stores Claude subscription OAuth
+> tokens as plaintext files in `~/.claude/keychain.<profile>.txt` (with
+> `chmod 600`). This is weaker than the macOS Keychain alone.
+>
+> Before installing, confirm:
+> - FileVault is on (`fdesetup status` should say `FileVault is On.`)
+> - `~/.claude` is NOT synced to iCloud / Dropbox / Google Drive / OneDrive
+> - `~/.claude` is NOT inside a git repo you commit to
+> - Your Time Machine backup is encrypted (or you accept plaintext tokens in backups)
+>
+> Not affiliated with Anthropic. Use this for your own multiple accounts only —
+> sharing a single subscription across people may violate Anthropic's terms.
+
+If the user declines or any of the conditions are not met, stop and recommend
+using `/logout` + `/login` from inside `claude` instead.
+
+---
+
 ## Step 1 — Prerequisite checks
 
 Run these checks first. Abort with a clear message if any fail.

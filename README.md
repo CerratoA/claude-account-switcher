@@ -6,6 +6,12 @@ macOS without losing your shared `~/.claude` setup.
 A 130-line bash script. No dependencies beyond the macOS `security` command
 that already ships with the OS.
 
+> **Use at your own risk.** This tool moves OAuth credentials out of the macOS
+> Keychain and stores them as plaintext files on disk under `~/.claude`. This
+> is a weaker confidentiality posture than Keychain alone. Read the
+> [Security and disclaimer](#security-and-disclaimer) section before
+> installing.
+
 ## Why this approach
 
 Most community switchers isolate the entire `~/.claude` directory per account
@@ -111,20 +117,70 @@ PROMPT='%F{cyan}[$(claude-acct current 2>/dev/null || echo none)]%f %~ %# '
 
 Override the storage directory with `CLAUDE_ACCT_STORE`.
 
-## Security
+## Security and disclaimer
 
-Stored credential files contain **plaintext OAuth tokens**. They live in
-`~/.claude` with `chmod 600` (owner read/write only).
+> **Use at your own risk.** Stored credential files contain **plaintext OAuth
+> tokens** for your Claude subscription. Storing tokens on disk is a deliberate
+> confidentiality downgrade from the macOS Keychain. By installing this tool
+> you accept that tradeoff and the consequences of token exposure on your
+> system.
 
-**Recommended:**
-- Keep FileVault enabled (it is by default on modern macOS).
-- Don't sync `~/.claude` to cloud storage (Dropbox, iCloud, etc.).
-- Don't commit `~/.claude` to a git repo. The included `.gitignore` defends
-  against this in case you ever turn `~/.claude` into a repo.
+Not affiliated with or endorsed by Anthropic. Your Claude subscription terms
+of service apply — this tool is intended for managing **your own** multiple
+accounts (e.g. personal + work). Sharing a single subscription across people
+may violate Anthropic's acceptable-use policy.
 
-This is a deliberate tradeoff: storing tokens at rest enables offline switching
-and faster swaps, at the cost of weaker confidentiality than Keychain alone.
-If that tradeoff is unacceptable for you, use `/logout` + `/login` instead.
+Provided as-is, without warranty of any kind. See [LICENSE](LICENSE).
+
+### What the tool does
+
+- Reads your current Claude OAuth credential from the macOS Keychain (service
+  name `Claude Code-credentials`) using the system `security` command.
+- Writes it to `~/.claude/keychain.<profile>.txt` with `chmod 600` (owner
+  read/write only).
+- On `switch`, deletes the active Keychain entry and replaces it with a
+  stored one.
+
+### What the tool does not do
+
+- It does **not** transmit credentials anywhere. There are zero network calls.
+- It does **not** modify, intercept, or impersonate Anthropic auth flows.
+- It does **not** read or write anything outside `~/.claude` (or
+  `$CLAUDE_ACCT_STORE` if set).
+
+### Threat model
+
+| Threat | Protected by |
+|--------|--------------|
+| Stolen laptop, powered off | FileVault (verify with `fdesetup status`) |
+| Other local users on the same Mac | `chmod 600` on credential files |
+| Token theft from `~/.claude` | FileVault + `chmod 600` |
+| Backup / sync leak (Time Machine, iCloud, Dropbox) | **You** — do not sync `~/.claude` |
+| Malware running as your user | **Nothing.** Same exposure as Keychain in unlocked state. |
+
+### Mandatory baseline
+
+Before installing, confirm all of these:
+
+- [ ] FileVault is on: `fdesetup status` prints `FileVault is On.`
+- [ ] `~/.claude` is **not** synced to Dropbox, iCloud Drive, Google Drive,
+      OneDrive, or any other cloud storage.
+- [ ] `~/.claude` is **not** inside a git repository you commit to.
+- [ ] Your Time Machine backup destination is encrypted (System Settings → Time
+      Machine → Options) — or you accept that backups contain plaintext tokens.
+
+If any of these aren't true, do not install. Use `/logout` + `/login` instead.
+
+### Reverting
+
+To remove all stored credentials and the active marker:
+
+```bash
+shred -u ~/.claude/keychain.*.txt 2>/dev/null || rm -P ~/.claude/keychain.*.txt
+rm -f ~/.claude/active-profile
+```
+
+(`rm -P` overwrites before deleting on macOS; `shred` is the GNU equivalent.)
 
 ## Requirements
 
